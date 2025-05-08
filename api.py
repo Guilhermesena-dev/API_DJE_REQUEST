@@ -6,14 +6,14 @@ from urllib3.util.retry import Retry
 
 BASE_URL = "https://comunicaapi.pje.jus.br/api/v1/comunicacao"
 
-tribunais = (
-    [f"TRT{i}" for i in range(1, 25)]
-    + [f"TRF{i}" for i in range(1, 6)]
-    + [f"TJ{uf}" for uf in [
-        "AC","AL","AM","AP","BA","CE","DF","ES","GO","MA","MG","MS",
-        "MT","PA","PB","PE","PI","PR","RJ","RN","RO","RR","RS","SC","SE","SP","TO"
-    ]]
-)
+# tribunais = (
+#     [f"TRT{i}" for i in range(1, 25)]
+#     + [f"TRF{i}" for i in range(1, 6)]
+#     + [f"TJ{uf}" for uf in [
+#         "AC","AL","AM","AP","BA","CE","DF","ES","GO","MA","MG","MS",
+#         "MT","PA","PB","PE","PI","PR","RJ","RN","RO","RR","RS","SC","SE","SP","TO"
+#     ]]
+# )
 
 empresas = [
     "CONSORCIO SOLAR ENERGIA RRPM",
@@ -40,7 +40,7 @@ adapter = HTTPAdapter(max_retries=retry_strategy)
 session.mount("https://", adapter)
 session.mount("http://", adapter)
 
-MAX_PAGES = 500      # 3 × 9
+MAX_PAGES = 2000     
 PAUSA = 0.5         # segundos entre requisições
 
 raw_items_data = {}
@@ -50,39 +50,38 @@ for empresa in empresas:
     raw_items_data[empresa] = []
     seen_ids = set()
 
-    for tribunal in tribunais:
-        for page in range(1, MAX_PAGES + 1):
-            params = {
-                "siglaTribunal": tribunal,
-                "nomeParte":     empresa,
-                "pagina":        page,
-                "itensPor":      100
-            }
+   # for tribunal in tribunais:
+    for page in range(0, MAX_PAGES + 1):
+        params = {
+            "nomeParte":     empresa,
+            "pagina":        page,
+            "itensPor":      1
+        }
 
-            try:
-                resp = session.get(BASE_URL, params=params)
-            except requests.exceptions.InvalidHeader:
-                time.sleep(1)
-                resp = session.get(BASE_URL, params=params)
+        try:
+            resp = session.get(BASE_URL, params=params)
+        except requests.exceptions.InvalidHeader:
+            time.sleep(1.5)
+            resp = session.get(BASE_URL, params=params)
 
-            resp.raise_for_status()
-            items = resp.json().get("items", [])
+        resp.raise_for_status()
+        items = resp.json().get("items", [])
 
-            if not items:
-                break  # sai da paginação deste tribunal
+        if not items:
+            break  # sai da paginação deste tribunal
+        
+        new_items = []
+        for it in items:
+            uid = it.get("numeroComunicacao") or it.get("numeroProcesso")
+            if uid not in seen_ids:
+                seen_ids.add(uid)
+                new_items.append(it)
 
-            new_items = []
-            for it in items:
-                uid = it.get("numeroComunicacao") or it.get("numeroProcesso")
-                if uid not in seen_ids:
-                    seen_ids.add(uid)
-                    new_items.append(it)
+        raw_items_data[empresa].extend(new_items)
+        print(f" pág {page}: +{len(new_items)} itens "
+                f"(total: {len(raw_items_data[empresa])})")
 
-            raw_items_data[empresa].extend(new_items)
-            print(f"{tribunal} pág {page}: +{len(new_items)} itens "
-                  f"(total: {len(raw_items_data[empresa])})")
-
-            time.sleep(PAUSA)
+        time.sleep(PAUSA)
 
     print(f"✓ Total coletado para {empresa}: {len(raw_items_data[empresa])} itens")
 
