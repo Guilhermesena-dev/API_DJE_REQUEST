@@ -3,17 +3,9 @@ import json
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+import math
 
 BASE_URL = "https://comunicaapi.pje.jus.br/api/v1/comunicacao"
-
-# tribunais = (
-#     [f"TRT{i}" for i in range(1, 25)]
-#     + [f"TRF{i}" for i in range(1, 6)]
-#     + [f"TJ{uf}" for uf in [
-#         "AC","AL","AM","AP","BA","CE","DF","ES","GO","MA","MG","MS",
-#         "MT","PA","PB","PE","PI","PR","RJ","RN","RO","RR","RS","SC","SE","SP","TO"
-#     ]]
-# )
 
 empresas = [
     "CONSORCIO SOLAR ENERGIA RRPM",
@@ -40,51 +32,50 @@ adapter = HTTPAdapter(max_retries=retry_strategy)
 session.mount("https://", adapter)
 session.mount("http://", adapter)
 
-MAX_PAGES = 2000     
-PAUSA = 0.5         # segundos entre requisições
+PAUSA = 0.5           # segundos entre requisições
+ITEMS_PER_PAGE = 100  # itens por página
 
 raw_items_data = {}
 
 for empresa in empresas:
     print(f"\n=== Empresa: {empresa} ===")
     raw_items_data[empresa] = []
-    seen_ids = set()
 
-   # for tribunal in tribunais:
-    for page in range(0, MAX_PAGES + 1):
+    # 1) primeira requisição para obter 'count'
+    params0 = {
+        "nomeParte":      empresa,
+        "pagina":         1,
+        "itensPorPagina": ITEMS_PER_PAGE
+    }
+    resp0 = session.get(BASE_URL, params=params0)
+    resp0.raise_for_status()
+    total = resp0.json().get("count", 0)
+    if total == 0:
+        print("Nenhum registro encontrado.")
+        continue
+
+    total_pages = math.ceil(total / ITEMS_PER_PAGE)
+    print(f"Total de registros: {total} em {total_pages} página(s).")
+
+    # 2) itera todas as páginas, sem deduplicar
+    for page in range(1, total_pages + 1):
         params = {
-            "nomeParte":     empresa,
-            "pagina":        page,
-            "itensPor":      1
+            "nomeParte":      empresa,
+            "pagina":         page,
+            "itensPorPagina": ITEMS_PER_PAGE
         }
-
-        try:
-            resp = session.get(BASE_URL, params=params)
-        except requests.exceptions.InvalidHeader:
-            time.sleep(1.5)
-            resp = session.get(BASE_URL, params=params)
-
+        resp = session.get(BASE_URL, params=params)
         resp.raise_for_status()
         items = resp.json().get("items", [])
 
-        if not items:
-            break  # sai da paginação deste tribunal
-        
-        new_items = []
-        for it in items:
-            uid = it.get("numeroComunicacao") or it.get("numeroProcesso")
-            if uid not in seen_ids:
-                seen_ids.add(uid)
-                new_items.append(it)
-
-        raw_items_data[empresa].extend(new_items)
-        print(f" pág {page}: +{len(new_items)} itens "
-                f"(total: {len(raw_items_data[empresa])})")
-
+        raw_items_data[empresa].extend(items)
+        print(f" pág {page:>3}: +{len(items):>3} itens "
+              f"(total coletado: {len(raw_items_data[empresa])})")
         time.sleep(PAUSA)
 
-    print(f"✓ Total coletado para {empresa}: {len(raw_items_data[empresa])} itens")
+    print(f"✓ Total final para {empresa}: {len(raw_items_data[empresa])} itens")
 
+# salva tudo num JSON
 with open("itens_por_empresa.json", "w", encoding="utf-8") as f:
     json.dump(raw_items_data, f, indent=2, ensure_ascii=False)
 

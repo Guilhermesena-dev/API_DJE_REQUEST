@@ -6,7 +6,7 @@ import os
 script_dir = os.getcwd()
 
 # Ajuste aqui para o nome do seu arquivo JSON
-json_filename = 'itens_por_empresa.json'
+json_filename = 'itens_por_tribunal_e_empresa.json'
 json_path = os.path.join(script_dir, json_filename)
 
 if not os.path.exists(json_path):
@@ -44,7 +44,7 @@ for empresa, items in data.items():
 df = pd.DataFrame(rows)
 
 # Salva em Excel (uma única planilha) no mesmo diretório atual
-excel_filename = 'itens_por_empresa.xlsx'
+excel_filename = 'itens_por_empresa2.xlsx'
 output_path = os.path.join(script_dir, excel_filename)
 df.to_excel(output_path, index=False, sheet_name='Dados')
 
